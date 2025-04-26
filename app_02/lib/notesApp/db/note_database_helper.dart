@@ -1,74 +1,63 @@
-// lib/database/note_database_helper.dart
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart'; // Sử dụng thư viện path
-import '../model/note.dart';
+import 'package:path/path.dart';
+import '../models/note.dart';
 
 class NoteDatabaseHelper {
-  static const _databaseName = "note_database.db";
-  static const _databaseVersion = 1;
-  static const table = 'notes';
-
+  static final NoteDatabaseHelper instance = NoteDatabaseHelper._init();
   static Database? _database;
+
+  NoteDatabaseHelper._init();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDatabase();
+    _database = await _initDB('notes.db');
     return _database!;
   }
 
-  Future<Database> _initDatabase() async {
-    // Sử dụng thư mục hiện tại làm đường dẫn
-    String databasesPath = await getDatabasesPath(); // Lấy đường dẫn mặc định từ sqflite
-    String path = join(databasesPath, _databaseName); // Nối đường dẫn với tên file cơ sở dữ liệu
+  Future<Database> _initDB(String filePath) async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, filePath);
 
-    return await openDatabase(
-      path,
-      version: _databaseVersion,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE $table (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            priority INTEGER NOT NULL,
-            createdAt TEXT NOT NULL,
-            modifiedAt TEXT NOT NULL,
-            tags TEXT,
-            color TEXT
-          )
-        ''');
-      },
-    );
+    return await openDatabase(path, version: 1, onCreate: _createDB);
+  }
+
+  Future _createDB(Database db, int version) async {
+    await db.execute('''
+    CREATE TABLE notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      priority INTEGER NOT NULL,
+      createdAt TEXT NOT NULL,
+      modifiedAt TEXT NOT NULL,
+      tags TEXT,
+      color TEXT,
+      isCompleted INTEGER NOT NULL DEFAULT 0 -- Thêm trường isCompleted, mặc định là 0 (chưa hoàn thành)
+    )
+    ''');
   }
 
   Future<int> insertNote(Note note) async {
     final db = await database;
-    return await db.insert(table, note.toMap());
+    return await db.insert('notes', note.toMap());
   }
 
   Future<List<Note>> getAllNotes() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(table);
-    return List.generate(maps.length, (i) => Note.fromMap(maps[i]));
+    final result = await db.query('notes');
+    return result.map((map) => Note.fromMap(map)).toList();
   }
 
   Future<Note?> getNoteById(int id) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      table,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    if (maps.isNotEmpty) {
-      return Note.fromMap(maps.first);
-    }
-    return null;
+    final result = await db.query('notes', where: 'id = ?', whereArgs: [id]);
+    return result.isNotEmpty ? Note.fromMap(result.first) : null;
   }
 
   Future<int> updateNote(Note note) async {
     final db = await database;
     return await db.update(
-      table,
+      'notes',
       note.toMap(),
       where: 'id = ?',
       whereArgs: [note.id],
@@ -77,30 +66,28 @@ class NoteDatabaseHelper {
 
   Future<int> deleteNote(int id) async {
     final db = await database;
-    return await db.delete(
-      table,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('notes', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<List<Note>> getNotesByPriority(int priority) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      table,
-      where: 'priority = ?',
-      whereArgs: [priority],
-    );
-    return List.generate(maps.length, (i) => Note.fromMap(maps[i]));
+    final result = await db.query('notes', where: 'priority = ?', whereArgs: [priority]);
+    return result.map((map) => Note.fromMap(map)).toList();
   }
 
   Future<List<Note>> searchNotes(String query) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      table,
+    final result = await db.query(
+      'notes',
       where: 'title LIKE ? OR content LIKE ?',
       whereArgs: ['%$query%', '%$query%'],
     );
-    return List.generate(maps.length, (i) => Note.fromMap(maps[i]));
+    return result.map((map) => Note.fromMap(map)).toList();
+  }
+
+  Future<void> close() async {
+    final db = await database;
+    _database = null;
+    await db.close();
   }
 }

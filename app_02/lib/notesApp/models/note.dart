@@ -1,13 +1,15 @@
-// lib/models/note.dart
+import 'package:flutter/material.dart';
+
 class Note {
-  int? id;
-  String title;
-  String content;
-  int priority; // 1: Low, 2: Medium, 3: High
-  DateTime createdAt;
-  DateTime modifiedAt;
-  List<String>? tags;
-  String? color;
+  final int? id;
+  final String title;
+  final String content;
+  final int priority;
+  final DateTime createdAt;
+  final DateTime modifiedAt;
+  final List<String>? tags;
+  final String? color;
+  final bool isCompleted; // Thêm trường isCompleted
 
   Note({
     this.id,
@@ -18,8 +20,10 @@ class Note {
     required this.modifiedAt,
     this.tags,
     this.color,
+    required this.isCompleted, // Yêu cầu giá trị khi tạo Note
   });
 
+  // Named constructor từ Map
   Note.fromMap(Map<String, dynamic> map)
       : id = map['id'],
         title = map['title'],
@@ -28,8 +32,10 @@ class Note {
         createdAt = DateTime.parse(map['createdAt']),
         modifiedAt = DateTime.parse(map['modifiedAt']),
         tags = map['tags'] != null ? List<String>.from(map['tags'].split(',')) : null,
-        color = map['color'];
+        color = map['color'],
+        isCompleted = map['isCompleted'] == 1; // Chuyển từ int (SQLite) sang bool
 
+  // Chuyển đổi thành Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -40,9 +46,11 @@ class Note {
       'modifiedAt': modifiedAt.toIso8601String(),
       'tags': tags?.join(','),
       'color': color,
+      'isCompleted': isCompleted ? 1 : 0, // Chuyển bool sang int để lưu vào SQLite
     };
   }
 
+  // Tạo bản sao với các thuộc tính được cập nhật
   Note copyWith({
     int? id,
     String? title,
@@ -52,6 +60,7 @@ class Note {
     DateTime? modifiedAt,
     List<String>? tags,
     String? color,
+    bool? isCompleted,
   }) {
     return Note(
       id: id ?? this.id,
@@ -62,12 +71,12 @@ class Note {
       modifiedAt: modifiedAt ?? this.modifiedAt,
       tags: tags ?? this.tags,
       color: color ?? this.color,
+      isCompleted: isCompleted ?? this.isCompleted,
     );
   }
 
   @override
   String toString() {
-    return 'Note{id: $id, title: $title, content: $content, priority: $priority, '
-        'createdAt: $createdAt, modifiedAt: $modifiedAt, tags: $tags, color: $color}';
+    return 'Note(id: $id, title: $title, priority: $priority, createdAt: $createdAt, isCompleted: $isCompleted)';
   }
 }

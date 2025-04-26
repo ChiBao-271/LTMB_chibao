@@ -1,14 +1,14 @@
-// lib/database/note_database_helper.dart
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart'; // Sử dụng thư viện path
+import 'package:path/path.dart';
 import '../model/note.dart';
 
 class NoteDatabaseHelper {
-  static const _databaseName = "note_database.db";
-  static const _databaseVersion = 1;
-  static const table = 'notes';
-
+  static final NoteDatabaseHelper _instance = NoteDatabaseHelper._internal();
   static Database? _database;
+
+  factory NoteDatabaseHelper() => _instance;
+
+  NoteDatabaseHelper._internal();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -17,16 +17,13 @@ class NoteDatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    // Sử dụng thư mục hiện tại làm đường dẫn
-    String databasesPath = await getDatabasesPath(); // Lấy đường dẫn mặc định từ sqflite
-    String path = join(databasesPath, _databaseName); // Nối đường dẫn với tên file cơ sở dữ liệu
-
+    String path = join(await getDatabasesPath(), 'notes.db');
     return await openDatabase(
       path,
-      version: _databaseVersion,
+      version: 1,
       onCreate: (db, version) async {
         await db.execute('''
-          CREATE TABLE $table (
+          CREATE TABLE notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             content TEXT NOT NULL,
@@ -34,7 +31,9 @@ class NoteDatabaseHelper {
             createdAt TEXT NOT NULL,
             modifiedAt TEXT NOT NULL,
             tags TEXT,
-            color TEXT
+            color TEXT,
+            isCompleted INTEGER NOT NULL,
+            imagePath TEXT
           )
         ''');
       },
@@ -43,19 +42,19 @@ class NoteDatabaseHelper {
 
   Future<int> insertNote(Note note) async {
     final db = await database;
-    return await db.insert(table, note.toMap());
+    return await db.insert('notes', note.toMap());
   }
 
   Future<List<Note>> getAllNotes() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(table);
+    final List<Map<String, dynamic>> maps = await db.query('notes');
     return List.generate(maps.length, (i) => Note.fromMap(maps[i]));
   }
 
   Future<Note?> getNoteById(int id) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
-      table,
+      'notes',
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -68,7 +67,7 @@ class NoteDatabaseHelper {
   Future<int> updateNote(Note note) async {
     final db = await database;
     return await db.update(
-      table,
+      'notes',
       note.toMap(),
       where: 'id = ?',
       whereArgs: [note.id],
@@ -78,7 +77,7 @@ class NoteDatabaseHelper {
   Future<int> deleteNote(int id) async {
     final db = await database;
     return await db.delete(
-      table,
+      'notes',
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -87,7 +86,7 @@ class NoteDatabaseHelper {
   Future<List<Note>> getNotesByPriority(int priority) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
-      table,
+      'notes',
       where: 'priority = ?',
       whereArgs: [priority],
     );
@@ -97,7 +96,7 @@ class NoteDatabaseHelper {
   Future<List<Note>> searchNotes(String query) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
-      table,
+      'notes',
       where: 'title LIKE ? OR content LIKE ?',
       whereArgs: ['%$query%', '%$query%'],
     );

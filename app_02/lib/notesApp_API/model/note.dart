@@ -1,13 +1,14 @@
-// lib/models/note.dart
 class Note {
-  int? id;
-  String title;
-  String content;
-  int priority; // 1: Low, 2: Medium, 3: High
-  DateTime createdAt;
-  DateTime modifiedAt;
-  List<String>? tags;
-  String? color;
+  final int? id;
+  final String title;
+  final String content;
+  final int priority;
+  final DateTime createdAt;
+  final DateTime modifiedAt;
+  final List<String>? tags;
+  final String? color;
+  final bool isCompleted;
+  final String? imagePath;
 
   Note({
     this.id,
@@ -18,6 +19,8 @@ class Note {
     required this.modifiedAt,
     this.tags,
     this.color,
+    this.isCompleted = false,
+    this.imagePath,
   });
 
   Note.fromMap(Map<String, dynamic> map)
@@ -28,7 +31,9 @@ class Note {
         createdAt = DateTime.parse(map['createdAt']),
         modifiedAt = DateTime.parse(map['modifiedAt']),
         tags = map['tags'] != null ? List<String>.from(map['tags'].split(',')) : null,
-        color = map['color'];
+        color = map['color'],
+        isCompleted = map['isCompleted'] == 1,
+        imagePath = map['imagePath'];
 
   Map<String, dynamic> toMap() {
     return {
@@ -40,6 +45,8 @@ class Note {
       'modifiedAt': modifiedAt.toIso8601String(),
       'tags': tags?.join(','),
       'color': color,
+      'isCompleted': isCompleted ? 1 : 0,
+      'imagePath': imagePath,
     };
   }
 
@@ -52,6 +59,8 @@ class Note {
     DateTime? modifiedAt,
     List<String>? tags,
     String? color,
+    bool? isCompleted,
+    String? imagePath,
   }) {
     return Note(
       id: id ?? this.id,
@@ -62,12 +71,15 @@ class Note {
       modifiedAt: modifiedAt ?? this.modifiedAt,
       tags: tags ?? this.tags,
       color: color ?? this.color,
+      isCompleted: isCompleted ?? this.isCompleted,
+      imagePath: imagePath ?? this.imagePath,
     );
   }
 
   @override
   String toString() {
     return 'Note{id: $id, title: $title, content: $content, priority: $priority, '
-        'createdAt: $createdAt, modifiedAt: $modifiedAt, tags: $tags, color: $color}';
+        'createdAt: $createdAt, modifiedAt: $modifiedAt, tags: $tags, color: $color, '
+        'isCompleted: $isCompleted, imagePath: $imagePath}';
   }
 }

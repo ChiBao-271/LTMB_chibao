@@ -1,76 +1,95 @@
-// lib/screens/note_detail_screen.dart
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import '../model/note.dart';
-import 'note_form_screen.dart';
-
-class NoteDetailScreen extends StatelessWidget {
-  final Note note;
-
-  const NoteDetailScreen({super.key, required this.note});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chi tiết Ghi chú'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => NoteFormScreen(note: note),
-                ),
-              );
-            },
-            tooltip: 'Chỉnh sửa',
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              note.title,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Ưu tiên: ${note.priority == 1 ? 'Thấp' : note.priority == 2 ? 'Trung bình' : 'Cao'}',
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              note.content,
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Ngày tạo: ${DateFormat('dd/MM/yyyy HH:mm').format(note.createdAt)}',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            Text(
-              'Cập nhật lần cuối: ${DateFormat('dd/MM/yyyy HH:mm').format(note.modifiedAt)}',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            if (note.tags != null && note.tags!.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text(
-                'Nhãn:',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              Wrap(
-                spacing: 8.0,
-                children: note.tags!.map((tag) => Chip(label: Text(tag))).toList(),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
+// // lib/screens/note_detail_screen.dart
+// import 'package:flutter/material.dart';
+// import 'package:intl/intl.dart';
+// import '../model/note.dart';
+// import 'note_form_screen.dart';
+//
+// class NoteDetailScreen extends StatelessWidget {
+//   final Note note;
+//
+//   const NoteDetailScreen({Key? key, required this.note}) : super(key: key);
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(
+//         title: Text(note.title, style: Theme.of(context).appBarTheme.foregroundColor != null
+//             ? TextStyle(color: Theme.of(context).appBarTheme.foregroundColor)
+//             : null),
+//         actions: [
+//           IconButton(
+//             icon: Icon(Icons.edit),
+//             onPressed: () {
+//               Navigator.pushReplacement(
+//                 context,
+//                 MaterialPageRoute(
+//                   builder: (context) => NoteFormScreen(note: note),
+//                 ),
+//               );
+//             },
+//           ),
+//         ],
+//       ),
+//       body: Padding(
+//         padding: const EdgeInsets.all(16.0),
+//         child: Column(
+//           crossAxisAlignment: CrossAxisAlignment.start,
+//           children: [
+//             Text(
+//               'Tiêu đề: ${note.title}',
+//               style: Theme.of(context).textTheme.titleLarge,
+//             ),
+//             SizedBox(height: 10),
+//             Text(
+//               'Nội dung: ${note.content}',
+//               style: Theme.of(context).textTheme.bodyLarge,
+//             ),
+//             SizedBox(height: 10),
+//             Text(
+//               'Mức độ ưu tiên: ${note.priority}',
+//               style: Theme.of(context).textTheme.bodyMedium,
+//             ),
+//             SizedBox(height: 10),
+//             Text(
+//               'Ngày tạo: ${note.createdAt}',
+//               style: Theme.of(context).textTheme.bodyMedium,
+//             ),
+//             SizedBox(height: 10),
+//             Text(
+//               'Cập nhật lần cuối: ${note.modifiedAt}',
+//               style: Theme.of(context).textTheme.bodyMedium,
+//             ),
+//             SizedBox(height: 10),
+//             if (note.tags != null && note.tags!.isNotEmpty)
+//               Wrap(
+//                 children: note.tags!
+//                     .map((tag) => Chip(
+//                   label: Text(tag),
+//                   padding: EdgeInsets.all(2),
+//                   backgroundColor: Theme.of(context).colorScheme.secondary,
+//                   labelStyle: TextStyle(
+//                     color: Theme.of(context).colorScheme.onSecondary,
+//                   ),
+//                 ))
+//                     .toList(),
+//               ),
+//             SizedBox(height: 10),
+//             Text(
+//               'Hoàn thành: ${note.isCompleted ? "Có" : "Không"}',
+//               style: Theme.of(context).textTheme.bodyMedium,
+//             ),
+//             SizedBox(height: 10),
+//             if (note.imagePath != null)
+//               Image.file(
+//                 File(note.imagePath!),
+//                 height: 200,
+//                 width: double.infinity,
+//                 fit: BoxFit.cover,
+//                 errorBuilder: (context, error, stackTrace) => Icon(Icons.error),
+//               ),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
