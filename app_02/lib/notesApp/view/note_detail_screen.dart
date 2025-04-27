@@ -25,7 +25,6 @@ class NoteDetailScreen extends StatelessWidget {
     return dateTime.toString().split('.').first;
   }
 
-  // Hàm ánh xạ nhãn (tag) thành màu
   Color _getTagColor(String tag) {
     switch (tag) {
       case 'Công Việc':
@@ -51,7 +50,6 @@ class NoteDetailScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Chi Tiết Ghi Chú'),
         actions: [
-          // Nút chỉnh sửa
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () => Navigator.pushReplacement(
@@ -59,9 +57,8 @@ class NoteDetailScreen extends StatelessWidget {
               MaterialPageRoute(builder: (context) => NoteForm(note: note)),
             ),
           ),
-          // Nút xóa
           IconButton(
-            icon: const Icon(Icons.delete, color: Colors.red),
+            icon: const Icon(Icons.delete, color: Colors.white),
             onPressed: () async {
               final confirm = await showDialog<bool>(
                 context: context,
@@ -81,8 +78,8 @@ class NoteDetailScreen extends StatelessWidget {
                 ),
               );
               if (confirm == true) {
-                await NoteDatabaseHelper.instance.deleteNote(note.id!);
-                Navigator.pop(context); // Quay lại màn hình danh sách
+                await NoteDatabaseHelper.instance.deleteNote(note.id!, note.userId);
+                Navigator.pop(context);
               }
             },
           ),
@@ -93,16 +90,13 @@ class NoteDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Tiêu đề
             Text(
               note.title,
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
-            // 2. Mức độ ưu tiên
             Text('Ưu Tiên: ${_getPriorityText(note.priority)}'),
             const SizedBox(height: 8),
-            // 3. Nhãn "Nội dung" và nội dung đã nhập
             const Text(
               'Nội dung',
               style: TextStyle(
@@ -113,33 +107,29 @@ class NoteDetailScreen extends StatelessWidget {
             const SizedBox(height: 4),
             Text(note.content),
             const SizedBox(height: 8),
-            // 4. Ngày giờ tạo
             Text('Thời Gian Tạo: ${_formatDateTime(note.createdAt)}'),
             const SizedBox(height: 8),
-            // 5. Ngày giờ cập nhật
             Text('Thời Gian Sửa: ${_formatDateTime(note.modifiedAt)}'),
             const SizedBox(height: 8),
-            // 6. Tags (nhãn) nếu có
             if (note.tags != null && note.tags!.isNotEmpty) ...[
               Wrap(
                 spacing: 8.0,
                 runSpacing: 4.0,
                 children: note.tags!
-                    .where((tag) => tag.isNotEmpty) // Loại bỏ chuỗi rỗng
+                    .where((tag) => tag.isNotEmpty)
                     .map((tag) {
                   return Chip(
                     label: Text(
                       tag,
                       style: const TextStyle(fontSize: 12),
                     ),
-                    backgroundColor: _getTagColor(tag), // Áp dụng màu cho tag
+                    backgroundColor: _getTagColor(tag),
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                   );
                 }).toList(),
               ),
               const SizedBox(height: 8),
             ],
-            // 7. Trạng thái hoàn thành
             Text(
               'Trạng thái: ${note.isCompleted ?? false ? 'Hoàn thành' : 'Chưa hoàn thành'}',
               style: TextStyle(

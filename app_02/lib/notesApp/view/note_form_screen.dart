@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../db/auth_api.dart';
 import '../db/note_database_helper.dart';
 import '../models/note.dart';
+import '../widgets/color_picker.dart';
 
 class NoteForm extends StatefulWidget {
   final Note? note;
@@ -18,25 +20,8 @@ class _NoteFormState extends State<NoteForm> {
   late int _priority;
   late List<String> _tags;
   late String? _color;
-  bool _showColorPicker = false;
+  String? userId;
 
-  // Danh sách 12 màu mix
-  final List<Map<String, dynamic>> _colorOptions = [
-    {'hex': '#CFF4D2', 'name': 'Xanh Bạc Hà Nhạt'},
-    {'hex': '#FFD1DC', 'name': 'Hồng Phấn Nhạt'},
-    {'hex': '#E6D7F5', 'name': 'Tím Pastel Nhẹ'},
-    {'hex': '#FFE8B5', 'name': 'Vàng Mơ Nhạt'},
-    {'hex': '#C9E4F6', 'name': 'Xanh Lam Nhẹ'},
-    {'hex': '#FFDAB9', 'name': 'Cam Đào Nhạt'},
-    {'hex': '#E0F7E9', 'name': 'Xanh Lá Nhạt'},
-    {'hex': '#E8DAEF', 'name': 'Tím Oải Hương Nhạt'},
-    {'hex': '#D6EAF8', 'name': 'Xanh Ngọc Bích Nhạt'},
-    {'hex': '#FFE4E1', 'name': 'Hồng Anh Đào Nhạt'},
-    {'hex': '#D6E4E5', 'name': 'Xanh Phấn Nhạt'},
-    {'hex': '#FFF5E4', 'name': 'Vàng Kem Nhạt'},
-  ];
-
-  // Danh sách nhãn có sẵn
   final List<String> _availableTags = [
     'Công Việc',
     'Học Tập',
@@ -46,7 +31,6 @@ class _NoteFormState extends State<NoteForm> {
     'Khác',
   ];
 
-  // Hàm ánh xạ nhãn (tag) thành màu
   Color _getTagColor(String tag) {
     switch (tag) {
       case 'Công Việc':
@@ -66,7 +50,6 @@ class _NoteFormState extends State<NoteForm> {
     }
   }
 
-  // Hàm làm đậm màu khi tag được chọn
   Color _darkenColor(Color color) {
     return Color.fromRGBO(
       (color.red * 0.8).round(),
@@ -84,6 +67,16 @@ class _NoteFormState extends State<NoteForm> {
     _priority = widget.note?.priority ?? 1;
     _tags = widget.note?.tags ?? [];
     _color = widget.note?.color;
+    _initUser();
+  }
+
+  Future<void> _initUser() async {
+    final user = AuthApi().getCurrentUser();
+    if (user != null) {
+      setState(() {
+        userId = user.uid;
+      });
+    }
   }
 
   @override
@@ -94,9 +87,10 @@ class _NoteFormState extends State<NoteForm> {
   }
 
   Future<void> _saveNote() async {
-    if (_formKey.currentState!.validate()) {
+    if (_formKey.currentState!.validate() && userId != null) {
       final note = Note(
         id: widget.note?.id,
+        userId: userId!,
         title: _titleController.text,
         content: _contentController.text,
         priority: _priority,
@@ -110,11 +104,17 @@ class _NoteFormState extends State<NoteForm> {
       try {
         if (widget.note == null) {
           await NoteDatabaseHelper.instance.insertNote(note);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Thêm ghi chú thành công'),
+              duration: Duration(seconds: 2),
+            ),
+          );
         } else {
           await NoteDatabaseHelper.instance.updateNote(note);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Đã cập nhật thành công'),
+              content: Text('Cập nhật ghi chú thành công'),
               duration: Duration(seconds: 2),
             ),
           );
@@ -125,6 +125,10 @@ class _NoteFormState extends State<NoteForm> {
           SnackBar(content: Text('Lỗi khi lưu ghi chú: $e')),
         );
       }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng kiểm tra thông tin')),
+      );
     }
   }
 
@@ -140,6 +144,7 @@ class _NoteFormState extends State<NoteForm> {
           key: _formKey,
           child: ListView(
             children: [
+              // Tiêu đề
               TextFormField(
                 controller: _titleController,
                 decoration: const InputDecoration(labelText: 'Tiêu Đề'),
@@ -150,6 +155,9 @@ class _NoteFormState extends State<NoteForm> {
                   return null;
                 },
               ),
+              const SizedBox(height: 16),
+
+              // Nội dung
               TextFormField(
                 controller: _contentController,
                 decoration: const InputDecoration(labelText: 'Nội Dung'),
@@ -161,6 +169,9 @@ class _NoteFormState extends State<NoteForm> {
                   return null;
                 },
               ),
+              const SizedBox(height: 16),
+
+              // Chọn mức độ ưu tiên
               DropdownButtonFormField<int>(
                 value: _priority,
                 decoration: const InputDecoration(labelText: 'Ưu Tiên'),
@@ -175,94 +186,20 @@ class _NoteFormState extends State<NoteForm> {
                   });
                 },
               ),
-              // Nút để hiển thị/ẩn các ô màu
               const SizedBox(height: 16),
-              GestureDetector(
-                onTap: () {
+
+              // Chọn màu sắc
+              ColorPicker(
+                selectedColor: _color,
+                onColorChanged: (color) {
                   setState(() {
-                    _showColorPicker = !_showColorPicker;
+                    _color = color;
                   });
                 },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Chọn Màu Sắc',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      Icon(
-                        _showColorPicker ? Icons.expand_less : Icons.expand_more,
-                        color: Colors.grey,
-                      ),
-                    ],
-                  ),
-                ),
               ),
-              // Hiển thị các ô màu khi _showColorPicker là true
-              if (_showColorPicker) ...[
-                const SizedBox(height: 8),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 6,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 1,
-                  ),
-                  itemCount: _colorOptions.length,
-                  itemBuilder: (context, index) {
-                    final colorOption = _colorOptions[index];
-                    final colorHex = colorOption['hex'] as String;
-                    final isSelected = _color == colorHex;
-
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _color = colorHex;
-                          _showColorPicker = false;
-                        });
-                      },
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: Color(int.parse('0xFF${colorHex.substring(1)}')),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isSelected ? Colors.black : Colors.grey.withOpacity(0.3),
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.2),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: isSelected
-                              ? const Icon(
-                            Icons.check,
-                            color: Colors.black,
-                            size: 16,
-                          )
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-              // Chọn nhãn từ danh sách có sẵn
               const SizedBox(height: 16),
+
+              // Chọn nhãn
               const Text(
                 'Chọn Nhãn',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -285,8 +222,8 @@ class _NoteFormState extends State<NoteForm> {
                         }
                       });
                     },
-                    selectedColor: _darkenColor(_getTagColor(tag)), // Màu khi được chọn
-                    backgroundColor: _getTagColor(tag), // Màu khi không được chọn
+                    selectedColor: _darkenColor(_getTagColor(tag)),
+                    backgroundColor: _getTagColor(tag),
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.black : Colors.black87,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -295,6 +232,8 @@ class _NoteFormState extends State<NoteForm> {
                 }).toList(),
               ),
               const SizedBox(height: 16),
+
+              // Nút lưu/cập nhật
               ElevatedButton(
                 onPressed: _saveNote,
                 child: Text(widget.note == null ? 'Lưu' : 'Cập Nhật'),

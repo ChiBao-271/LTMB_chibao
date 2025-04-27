@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class Note {
   final int? id;
+  final String userId; // Thêm userId để liên kết với user
   final String title;
   final String content;
   final int priority;
@@ -9,10 +10,11 @@ class Note {
   final DateTime modifiedAt;
   final List<String>? tags;
   final String? color;
-  final bool isCompleted; // Thêm trường isCompleted
+  final bool isCompleted;
 
   Note({
     this.id,
+    required this.userId, // Thêm userId vào constructor
     required this.title,
     required this.content,
     required this.priority,
@@ -20,12 +22,12 @@ class Note {
     required this.modifiedAt,
     this.tags,
     this.color,
-    required this.isCompleted, // Yêu cầu giá trị khi tạo Note
+    required this.isCompleted,
   });
 
-  // Named constructor từ Map
   Note.fromMap(Map<String, dynamic> map)
       : id = map['id'],
+        userId = map['userId'], // Thêm userId vào fromMap
         title = map['title'],
         content = map['content'],
         priority = map['priority'],
@@ -33,12 +35,12 @@ class Note {
         modifiedAt = DateTime.parse(map['modifiedAt']),
         tags = map['tags'] != null ? List<String>.from(map['tags'].split(',')) : null,
         color = map['color'],
-        isCompleted = map['isCompleted'] == 1; // Chuyển từ int (SQLite) sang bool
+        isCompleted = map['isCompleted'] == 1;
 
-  // Chuyển đổi thành Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'userId': userId, // Thêm userId vào toMap
       'title': title,
       'content': content,
       'priority': priority,
@@ -46,13 +48,13 @@ class Note {
       'modifiedAt': modifiedAt.toIso8601String(),
       'tags': tags?.join(','),
       'color': color,
-      'isCompleted': isCompleted ? 1 : 0, // Chuyển bool sang int để lưu vào SQLite
+      'isCompleted': isCompleted ? 1 : 0,
     };
   }
 
-  // Tạo bản sao với các thuộc tính được cập nhật
   Note copyWith({
     int? id,
+    String? userId, // Thêm userId vào copyWith
     String? title,
     String? content,
     int? priority,
@@ -64,6 +66,7 @@ class Note {
   }) {
     return Note(
       id: id ?? this.id,
+      userId: userId ?? this.userId, // Thêm userId vào copyWith
       title: title ?? this.title,
       content: content ?? this.content,
       priority: priority ?? this.priority,
@@ -77,6 +80,6 @@ class Note {
 
   @override
   String toString() {
-    return 'Note(id: $id, title: $title, priority: $priority, createdAt: $createdAt, isCompleted: $isCompleted)';
+    return 'Note(id: $id, userId: $userId, title: $title, priority: $priority, createdAt: $createdAt, isCompleted: $isCompleted)';
   }
 }
