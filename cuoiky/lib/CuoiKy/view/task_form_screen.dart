@@ -29,48 +29,23 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   String? _groupId;
   List<String> _attachments = [];
   bool _isLoading = false;
+  bool _isDataLoading = true;
+  bool _isGroupMembersLoaded = false;
   final FirestoreService _firestoreService = FirestoreService();
   String? _currentUserRole;
   String? _currentUserId;
   List<Group> _groups = [];
+  bool _isAdminOfGroup = false;
+  List<String> _groupMembers = [];
+  Map<String, String> _usernameCache = {};
 
   final List<Map<String, dynamic>> _categoryTags = [
-    {
-      'name': 'Công việc hàng ngày',
-      'color': Color(0xFFBBDEFB),
-      'textColor': Color(0xFF1976D2),
-      'defaultTextColor': Color(0xFF455A64),
-    },
-    {
-      'name': 'Công việc quan trọng',
-      'color': Color(0xFFFFCDD2),
-      'textColor': Color(0xFFD32F2F),
-      'defaultTextColor': Color(0xFF455A64),
-    },
-    {
-      'name': 'Công việc nhóm',
-      'color': Color(0xFFC8E6C9),
-      'textColor': Color(0xFF388E3C),
-      'defaultTextColor': Color(0xFF455A64),
-    },
-    {
-      'name': 'Công việc cá nhân',
-      'color': Color(0xFFE1BEE7),
-      'textColor': Color(0xFF7B1FA2),
-      'defaultTextColor': Color(0xFF455A64),
-    },
-    {
-      'name': 'Công việc dài hạn',
-      'color': Color(0xFFFFE0B2),
-      'textColor': Color(0xFFF57C00),
-      'defaultTextColor': Color(0xFF455A64),
-    },
-    {
-      'name': 'Công việc khẩn cấp',
-      'color': Color(0xFFB2EBF2),
-      'textColor': Color(0xFF0097A7),
-      'defaultTextColor': Color(0xFF455A64),
-    },
+    {'name': 'Công việc hàng ngày', 'color': Color(0xFFBBDEFB), 'textColor': Color(0xFF1976D2), 'defaultTextColor': Color(0xFF455A64)},
+    {'name': 'Công việc quan trọng', 'color': Color(0xFFFFCDD2), 'textColor': Color(0xFFD32F2F), 'defaultTextColor': Color(0xFF455A64)},
+    {'name': 'Công việc nhóm', 'color': Color(0xFFC8E6C9), 'textColor': Color(0xFF388E3C), 'defaultTextColor': Color(0xFF455A64)},
+    {'name': 'Công việc cá nhân', 'color': Color(0xFFE1BEE7), 'textColor': Color(0xFF7B1FA2), 'defaultTextColor': Color(0xFF455A64)},
+    {'name': 'Công việc dài hạn', 'color': Color(0xFFFFE0B2), 'textColor': Color(0xFFF57C00), 'defaultTextColor': Color(0xFF455A64)},
+    {'name': 'Công việc khẩn cấp', 'color': Color(0xFFB2EBF2), 'textColor': Color(0xFF0097A7), 'defaultTextColor': Color(0xFF455A64)},
   ];
 
   final Map<String, String> _statusDisplay = {
@@ -91,39 +66,155 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       _priority = widget.task!.priority;
       _dueDate = widget.task!.dueDate;
       _category = widget.task!.category;
-      _assignedTo = widget.task!.assignedTo;
-      _groupId = widget.task!.groupId;
       _attachments = widget.task!.attachments ?? [];
     }
   }
 
   Future<void> _loadCurrentUserInfo() async {
+    setState(() => _isDataLoading = true);
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không tìm thấy thông tin người dùng')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Không tìm thấy thông tin người dùng!')),
+          );
+        }
+        setState(() => _isDataLoading = false);
         return;
       }
-      setState(() {
-        _currentUserId = user.uid;
-      });
+      setState(() => _currentUserId = user.uid);
+      print('Current user ID: $_currentUserId');
       final role = await _firestoreService.getUserRoleById(user.uid);
-      setState(() {
-        _currentUserRole = role ?? 'user';
-        if (_currentUserRole != 'admin' && widget.task == null) {
-          _assignedTo = _currentUserId;
-        }
-      });
       final groups = await _firestoreService.getUserGroups(user.uid);
-      setState(() {
-        _groups = groups;
-      });
+
+      for (var group in groups) {
+        for (var memberId in group.members) {
+          if (!_usernameCache.containsKey(memberId)) {
+            try {
+              final username = await _firestoreService.getUsernameById(memberId);
+              _usernameCache[memberId] = username ?? 'Người dùng không xác định';
+              print('Loaded username for $memberId: ${_usernameCache[memberId]}');
+            } catch (e) {
+              print('Error loading username for $memberId: $e');
+              _usernameCache[memberId] = 'Người dùng không xác định';
+            }
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _currentUserRole = role ?? 'user';
+          _groups = groups;
+          if (widget.task == null) {
+            _groupId = null;
+            _assignedTo = _currentUserId;
+          }
+        });
+      }
+
+      if (widget.task?.groupId != null) {
+        final taskGroupId = widget.task!.groupId!;
+        print('Task groupId: $taskGroupId, Available groups: ${_groups.map((g) => g.id).toList()}');
+        if (_groups.any((group) => group.id == taskGroupId)) {
+          _groupId = taskGroupId;
+          await _loadGroupMembers(taskGroupId);
+          if (widget.task?.assignedTo != null && _groupMembers.isNotEmpty) {
+            final taskAssignedTo = widget.task!.assignedTo!;
+            print('Task assignedTo: $taskAssignedTo, Group members: $_groupMembers');
+            if (_groupMembers.contains(taskAssignedTo)) {
+              _assignedTo = taskAssignedTo;
+            } else {
+              print('AssignedTo $taskAssignedTo không hợp lệ, reset về null');
+              _assignedTo = null;
+            }
+          } else {
+            print('AssignedTo không được set vì _groupMembers rỗng hoặc task.assignedTo null');
+            _assignedTo = null;
+          }
+        } else {
+          print('GroupId $taskGroupId không hợp lệ, reset về null');
+          _groupId = null;
+          _assignedTo = null;
+        }
+      }
+
+      if (_groupId != null) {
+        final group = await _firestoreService.getGroup(_groupId!);
+        if (group != null && group.adminId == _currentUserId) {
+          if (mounted) {
+            setState(() => _isAdminOfGroup = true);
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _isAdminOfGroup = false;
+              _assignedTo = _currentUserId;
+            });
+          }
+        }
+      }
+      if (mounted) {
+        setState(() => _isDataLoading = false);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi tải thông tin người dùng: $e')),
-      );
+      print('Lỗi khi tải thông tin người dùng: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi tải thông tin người dùng: $e')),
+        );
+        setState(() => _isDataLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadGroupMembers(String groupId) async {
+    if (_isGroupMembersLoaded) {
+      print('Group members already loaded for group $groupId: $_groupMembers');
+      return;
+    }
+    try {
+      final group = await _firestoreService.getGroup(groupId);
+      if (group != null) {
+        if (mounted) {
+          setState(() {
+            _groupMembers = group.members;
+            _isGroupMembersLoaded = true;
+            print('Loaded group members for group $groupId: $_groupMembers');
+            if (_groupMembers.isEmpty) {
+              print('Group $groupId không có thành viên, reset assignedTo về null');
+              _assignedTo = null;
+            } else if (_assignedTo != null && !_groupMembers.contains(_assignedTo)) {
+              print('AssignedTo $_assignedTo không còn trong nhóm $groupId, reset về null');
+              _assignedTo = null;
+            }
+          });
+        }
+      } else {
+        print('Nhóm $groupId không tồn tại, reset groupId và assignedTo');
+        if (mounted) {
+          setState(() {
+            _groupMembers = [];
+            _groupId = null;
+            _assignedTo = null;
+            _isGroupMembersLoaded = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Lỗi khi tải danh sách thành viên cho nhóm $groupId: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi tải danh sách thành viên: $e')),
+        );
+        setState(() {
+          _groupMembers = [];
+          _groupId = null;
+          _assignedTo = null;
+          _isGroupMembersLoaded = false;
+        });
+      }
     }
   }
 
@@ -148,17 +239,15 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         );
       },
     );
-    if (picked != null) {
-      setState(() {
-        _dueDate = picked;
-      });
+    if (picked != null && mounted) {
+      setState(() => _dueDate = picked);
     }
   }
 
   Future<void> _pickFiles() async {
     try {
       final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-      if (result != null) {
+      if (result != null && mounted) {
         setState(() {
           _attachments.addAll(result.files
               .map((file) => file.path ?? '')
@@ -167,9 +256,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi chọn tệp: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi chọn tệp: $e')),
+        );
+      }
     }
   }
 
@@ -187,7 +278,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text('Hủy', style: TextStyle(color: Colors.grey)),
+              child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
@@ -197,32 +288,33 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         ),
       );
 
-      if (confirm == true) {
-        setState(() {
-          _isLoading = true;
-        });
+      if (confirm == true && mounted) {
+        setState(() => _isLoading = true);
         try {
           if (_titleController.text.trim().isEmpty) {
-            throw Exception('Tiêu đề không được để trống');
+            throw Exception('Tiêu đề không được để trống!');
           }
           if (_descriptionController.text.trim().isEmpty) {
-            throw Exception('Mô tả không được để trống');
+            throw Exception('Mô tả không được để trống!');
           }
           if (_status.isEmpty) {
-            throw Exception('Trạng thái không được để trống');
+            throw Exception('Trạng thái không được để trống!');
           }
           if (_priority < 1 || _priority > 3) {
-            throw Exception('Độ ưu tiên không hợp lệ');
+            throw Exception('Độ ưu tiên không hợp lệ!');
           }
           if (_attachments.any((path) => path.isEmpty)) {
-            throw Exception('Một hoặc nhiều tệp đính kèm không hợp lệ');
+            throw Exception('Một hoặc nhiều tệp đính kèm không hợp lệ!');
           }
           if (_currentUserId == null) {
-            throw Exception('Không tìm thấy thông tin người dùng');
+            throw Exception('Không tìm thấy thông tin người dùng!');
+          }
+          if (_groupId != null && !_isAdminOfGroup && _assignedTo != _currentUserId) {
+            throw Exception('Chỉ admin của nhóm mới được giao công việc!');
           }
 
           final task = Task(
-            id: widget.task?.id ?? Uuid().v4(),
+            id: widget.task?.id ?? const Uuid().v4(),
             title: _titleController.text.trim(),
             description: _descriptionController.text.trim(),
             status: _status,
@@ -234,32 +326,40 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             createdBy: _currentUserId!,
             category: _category,
             attachments: _attachments.isNotEmpty ? _attachments : null,
-            completed: false,
+            completed: _status == 'Done',
             groupId: _groupId,
           );
 
           if (widget.task == null) {
             await _firestoreService.createTask(task);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Đã tạo công việc thành công')),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đã tạo công việc thành công!')),
+              );
+            }
           } else {
             await _firestoreService.updateTask(task);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Đã cập nhật công việc thành công')),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đã cập nhật công việc thành công!')),
+              );
+            }
           }
 
           widget.onSave();
-          Navigator.pop(context, true);
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Lỗi khi lưu: $e')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Lỗi khi lưu công việc: $e')),
+            );
+          }
         } finally {
-          setState(() {
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
         }
       }
     }
@@ -272,10 +372,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       body: Stack(
         children: [
           SafeArea(
-            child: Column(
+            child: _isDataLoading
+                ? Center(child: CircularProgressIndicator(color: Colors.blue[700]))
+                : Column(
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -296,7 +398,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -313,13 +415,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 labelText: 'Tiêu đề',
                                 labelStyle: TextStyle(color: Colors.blue[700]),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               ),
-                              validator: (value) =>
-                              value!.trim().isEmpty ? 'Vui lòng nhập tiêu đề' : null,
+                              validator: (value) => value!.trim().isEmpty ? 'Vui lòng nhập tiêu đề!' : null,
                             ),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
@@ -331,14 +432,13 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 labelText: 'Mô tả',
                                 labelStyle: TextStyle(color: Colors.blue[700]),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               ),
                               maxLines: 3,
-                              validator: (value) =>
-                              value!.trim().isEmpty ? 'Vui lòng nhập mô tả' : null,
+                              validator: (value) => value!.trim().isEmpty ? 'Vui lòng nhập mô tả!' : null,
                             ),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
@@ -350,18 +450,28 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 labelText: 'Trạng thái',
                                 labelStyle: TextStyle(color: Colors.blue[700]),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               ),
-                              items: (widget.task == null
+                              items: widget.task == null
                                   ? [
                                 {'value': 'To do', 'label': 'Cần làm'},
                                 {'value': 'In progress', 'label': 'Đang làm'},
                               ]
-                                  : [
+                                  .map((item) => DropdownMenuItem(
+                                value: item['value'],
+                                child: Text(item['label']!),
+                              ))
+                                  .toList()
+                                  : (_isAdminOfGroup
+                                  ? [
                                 {'value': 'To do', 'label': 'Cần làm'},
                                 {'value': 'In progress', 'label': 'Đang làm'},
                                 {'value': 'Done', 'label': 'Đã hoàn thành'},
                                 {'value': 'Cancelled', 'label': 'Đã hủy'},
+                              ]
+                                  : [
+                                {'value': 'To do', 'label': 'Cần làm'},
+                                {'value': 'Done', 'label': 'Đã hoàn thành'},
                               ])
                                   .map((item) => DropdownMenuItem(
                                 value: item['value'],
@@ -369,12 +479,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                               ))
                                   .toList(),
                               onChanged: (value) => setState(() => _status = value!),
-                              validator: (value) =>
-                              value == null || value.isEmpty ? 'Vui lòng chọn trạng thái' : null,
+                              validator: (value) => value == null || value.isEmpty ? 'Vui lòng chọn trạng thái!' : null,
                               isExpanded: true,
                             ),
                           ),
-                             SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
@@ -386,53 +495,48 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 labelText: 'Độ ưu tiên',
                                 labelStyle: TextStyle(color: Colors.blue[700]),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               ),
-                              items: [
+                              items: const [
                                 DropdownMenuItem(value: 1, child: Text('Thấp')),
                                 DropdownMenuItem(value: 2, child: Text('Trung bình')),
                                 DropdownMenuItem(value: 3, child: Text('Cao')),
                               ],
                               onChanged: (value) => setState(() => _priority = value!),
-                              validator: (value) =>
-                              value == null ? 'Vui lòng chọn độ ưu tiên' : null,
+                              validator: (value) => value == null ? 'Vui lòng chọn độ ưu tiên!' : null,
                               isExpanded: true,
                             ),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: ListTile(
+                              leading: Icon(Icons.calendar_today, color: Colors.blue[700]),
                               title: Text(
-                                _dueDate == null
-                                    ? 'Chọn ngày đến hạn'
-                                    : 'Hạn: ${DateFormat.yMd().format(_dueDate!)}',
+                                _dueDate == null ? 'Chọn ngày đến hạn' : 'Hạn: ${DateFormat.yMd().format(_dueDate!)}',
                                 style: TextStyle(color: Colors.blue[700]),
                               ),
                               onTap: _pickDate,
                             ),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            padding: EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'Danh mục',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.blue[700],
-                                  ),
+                                  style: TextStyle(fontSize: 16, color: Colors.blue[700]),
                                 ),
-                                SizedBox(height: 8),
+                                const SizedBox(height: 8),
                                 Wrap(
                                   spacing: 8.0,
                                   runSpacing: 8.0,
@@ -443,22 +547,16 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                         tag['name'],
                                         style: TextStyle(
                                           fontSize: 16,
-                                          color: isSelected
-                                              ? tag['textColor']
-                                              : tag['defaultTextColor'],
+                                          color: isSelected ? tag['textColor'] : tag['defaultTextColor'],
                                         ),
                                       ),
                                       selected: isSelected,
                                       backgroundColor: tag['color'],
                                       selectedColor: tag['color'],
-                                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                       onSelected: (selected) {
-                                        setState(() {
-                                          _category = selected ? tag['name'] : null;
-                                        });
+                                        setState(() => _category = selected ? tag['name'] : null);
                                       },
                                     );
                                   }).toList(),
@@ -466,32 +564,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                               ],
                             ),
                           ),
-                          SizedBox(height: 16),
-                          Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey[300]!),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              child: TextFormField(
-                                decoration: InputDecoration(
-                                  labelText: 'Giao cho (ID người dùng)',
-                                  labelStyle: TextStyle(color: Colors.blue[700]),
-                                  border: InputBorder.none,
-                                ),
-                                onChanged: _currentUserRole == 'admin'
-                                    ? (value) => _assignedTo = value
-                                    : null,
-                                initialValue: _assignedTo,
-                                enabled: _currentUserRole == 'admin',
-                                style: TextStyle(
-                                  color: _currentUserRole == 'admin' ? Colors.black : Colors.grey[600],
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
@@ -503,38 +576,108 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 labelText: 'Nhóm',
                                 labelStyle: TextStyle(color: Colors.blue[700]),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               ),
-                              items: [
-                                DropdownMenuItem(value: null, child: Text('Không thuộc nhóm')),
+                              items: _groups.isEmpty
+                                  ? [const DropdownMenuItem(value: null, child: Text('Cá nhân'), enabled: true)]
+                                  : [
+                                const DropdownMenuItem(value: null, child: Text('Cá nhân')),
                                 ..._groups
-                                    .map((group) => DropdownMenuItem(
-                                  value: group.id,
-                                  child: Text(group.name),
-                                ))
+                                    .map((group) => DropdownMenuItem(value: group.id, child: Text(group.name)))
                                     .toList(),
                               ],
-                              onChanged: (value) => setState(() => _groupId = value),
+                              onChanged: (value) async {
+                                setState(() {
+                                  _groupId = value;
+                                  _isAdminOfGroup = false;
+                                  _groupMembers = [];
+                                  _assignedTo = _groupId == null ? _currentUserId : null;
+                                  _isGroupMembersLoaded = false;
+                                });
+                                if (value != null) {
+                                  await _loadGroupMembers(value);
+                                  final group = await _firestoreService.getGroup(value);
+                                  if (group != null && group.adminId == _currentUserId && mounted) {
+                                    setState(() => _isAdminOfGroup = true);
+                                  }
+                                }
+                              },
                               isExpanded: true,
                             ),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
+                          FutureBuilder(
+                            key: ValueKey(_groupId),
+                            future: _groupId != null ? _loadGroupMembers(_groupId!) : Future.value(),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                return const Center(child: CircularProgressIndicator(color: Colors.blue));
+                              }
+                              if (snapshot.hasError) {
+                                print('FutureBuilder error: ${snapshot.error}');
+                                return Text('Lỗi khi tải thành viên: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+                              }
+                              if (_groupMembers.isEmpty || (_assignedTo != null && !_groupMembers.contains(_assignedTo))) {
+                                print('Pre-render check: _assignedTo $_assignedTo không hợp lệ hoặc _groupMembers rỗng, reset về null');
+                                _assignedTo = _groupId == null ? _currentUserId : null;
+                              }
+                              print('Render dropdown _assignedTo: value=$_assignedTo, items=${_groupMembers.isEmpty ? '[null]' : _groupMembers}');
+                              return Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey[300]!),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: DropdownButtonFormField<String>(
+                                  value: _assignedTo,
+                                  decoration: InputDecoration(
+                                    labelText: 'Giao cho',
+                                    labelStyle: TextStyle(color: Colors.blue[700]),
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  ),
+                                  items: _groupId == null
+                                      ? [
+                                    DropdownMenuItem(
+                                      value: _currentUserId,
+                                      child: Text(_usernameCache[_currentUserId] ?? 'Người dùng không xác định'),
+                                    )
+                                  ]
+                                      : _groupMembers.isEmpty
+                                      ? [
+                                    const DropdownMenuItem(
+                                        value: null, child: Text('Không có thành viên'), enabled: false)
+                                  ]
+                                      : [
+                                    const DropdownMenuItem(value: null, child: Text('Không giao cho ai')),
+                                    ..._groupMembers
+                                        .map((memberId) => DropdownMenuItem(
+                                      value: memberId,
+                                      child: Text(_usernameCache[memberId] ?? 'Người dùng không xác định'),
+                                    ))
+                                        .toList(),
+                                  ],
+                                  onChanged: (_isAdminOfGroup && _groupId != null && _groupMembers.isNotEmpty)
+                                      ? (value) => setState(() => _assignedTo = value)
+                                      : null,
+                                  isExpanded: true,
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: ListTile(
-                              title: Text(
-                                'Tệp đính kèm (${_attachments.length})',
-                                style: TextStyle(color: Colors.blue[700]),
-                              ),
+                              title: Text('Tệp đính kèm (${_attachments.length})', style: TextStyle(color: Colors.blue[700])),
                               onTap: _pickFiles,
                             ),
                           ),
                           if (_attachments.isNotEmpty)
                             Padding(
-                              padding: EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.only(top: 8),
                               child: Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
@@ -542,19 +685,13 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                     .map((file) => Chip(
                                   label: Text(file.split('/').last),
                                   backgroundColor: Colors.blue[50],
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  onDeleted: () {
-                                    setState(() {
-                                      _attachments.remove(file);
-                                    });
-                                  },
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  onDeleted: () => setState(() => _attachments.remove(file)),
                                 ))
                                     .toList(),
                               ),
                             ),
-                          SizedBox(height: 24),
+                          const SizedBox(height: 24),
                           Container(
                             width: double.infinity,
                             decoration: BoxDecoration(
@@ -570,24 +707,18 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
-                                padding: EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               ),
                               child: _isLoading
-                                  ? CircularProgressIndicator(color: Colors.white)
-                                  : Text(
+                                  ? const CircularProgressIndicator(color: Colors.white)
+                                  : const Text(
                                 'Lưu',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
                               ),
                             ),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                         ],
                       ),
                     ),
@@ -599,12 +730,17 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           if (_isLoading)
             Container(
               color: Colors.black54,
-              child: Center(
-                child: CircularProgressIndicator(color: Colors.blue[700]),
-              ),
+              child: Center(child: CircularProgressIndicator(color: Colors.blue[700])),
             ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
   }
 }

@@ -20,8 +20,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   String? _currentUserRole;
   String? _groupName;
+  bool _isAdminOfGroup = false;
+  String? _currentUserId;
+  String? _assignedToUsername;
 
-  // Danh sách các tag danh mục với màu sắc riêng
   final List<Map<String, dynamic>> _categoryTags = [
     {'name': 'Công việc hàng ngày', 'color': Colors.blue[100], 'textColor': Colors.blue[800]},
     {'name': 'Công việc quan trọng', 'color': Colors.red[100], 'textColor': Colors.red[800]},
@@ -31,7 +33,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     {'name': 'Công việc khẩn cấp', 'color': Color(0xFFB2EBF2), 'textColor': Color(0xFF0097A7)},
   ];
 
-  // Ánh xạ trạng thái tiếng Anh sang tiếng Việt để hiển thị
   final Map<String, String> _statusDisplay = {
     'To do': 'Cần làm',
     'In progress': 'Đang làm',
@@ -46,34 +47,61 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (widget.task.groupId != null) {
       _loadGroupName();
     }
+    if (widget.task.assignedTo != null) {
+      _loadAssignedToUsername();
+    }
   }
 
   Future<void> _loadCurrentUserInfo() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        setState(() => _currentUserId = user.uid);
         final role = await _firestoreService.getUserRoleById(user.uid);
-        setState(() {
-          _currentUserRole = role ?? 'user';
-        });
+        setState(() => _currentUserRole = role ?? 'user');
+        if (widget.task.groupId != null) {
+          final group = await _firestoreService.getGroup(widget.task.groupId!);
+          if (group != null && group.adminId == user.uid) {
+            setState(() => _isAdminOfGroup = true);
+          }
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi tải thông tin người dùng: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi tải thông tin người dùng: $e')),
+        );
+      }
     }
   }
 
   Future<void> _loadGroupName() async {
     try {
       final group = await _firestoreService.getGroup(widget.task.groupId!);
-      setState(() {
-        _groupName = group?.name;
-      });
+      if (mounted) {
+        setState(() => _groupName = group?.name);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi tải thông tin nhóm: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi tải thông tin nhóm: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadAssignedToUsername() async {
+    try {
+      final username = await _firestoreService.getUsernameById(widget.task.assignedTo!);
+      if (mounted) {
+        setState(() => _assignedToUsername = username ?? 'Không xác định');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi tải tên người được giao: $e')),
+        );
+      }
     }
   }
 
@@ -85,21 +113,67 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
+  Future<void> _deleteTask() async {
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        title: Text('Xác nhận xóa', style: TextStyle(color: Colors.blue[700])),
+        content: Text('Bạn có chắc chắn muốn xóa công việc "${widget.task.title}" không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      setState(() => _isLoading = true);
+      try {
+        await _firestoreService.deleteTask(widget.task.id);
+        widget.onUpdate();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đã xóa công việc thành công!')),
+          );
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi khi xóa công việc: $e')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
   Future<void> _handleToggleComplete() async {
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         title: Text(
-            widget.task.status == 'Done' ? 'Xác nhận hủy hoàn thành' : 'Xác nhận hoàn thành',
-            style: TextStyle(color: Colors.blue[700])),
+          widget.task.status == 'Done' ? 'Xác nhận hủy hoàn thành' : 'Xác nhận hoàn thành',
+          style: TextStyle(color: Colors.blue[700]),
+        ),
         content: Text(widget.task.status == 'Done'
             ? 'Bạn có muốn hủy trạng thái hoàn thành công việc này không?'
             : 'Bạn có muốn đánh dấu công việc này là hoàn thành không?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey)),
+            child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -109,10 +183,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ),
     );
 
-    if (confirm == true) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (confirm == true && mounted) {
+      setState(() => _isLoading = true);
       try {
         String newStatus = widget.task.status == 'Done' ? 'To do' : 'Done';
         DateTime? newCompletedAt = newStatus == 'Done' ? DateTime.now() : null;
@@ -125,22 +197,38 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
         );
         widget.onUpdate();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(newStatus == 'Done'
-                  ? 'Đã đánh dấu hoàn thành'
-                  : 'Đã hủy trạng thái hoàn thành')),
-        );
-        Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newStatus == 'Done' ? 'Đã đánh dấu hoàn thành!' : 'Đã hủy trạng thái hoàn thành!'),
+            ),
+          );
+          Navigator.pop(context);
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi cập nhật trạng thái: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi khi cập nhật trạng thái: $e')),
+          );
+        }
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
+    }
+  }
+
+  Future<void> _handleEdit() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskFormScreen(task: widget.task, onSave: widget.onUpdate),
+      ),
+    );
+    if (result == true && mounted) {
+      widget.onUpdate();
+      Navigator.pop(context);
     }
   }
 
@@ -151,14 +239,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        title: Text('Xác nhận cập nhật trạng thái',
-            style: TextStyle(color: Colors.blue[700])),
-        content: Text(
-            'Bạn có muốn cập nhật trạng thái thành "${_statusDisplay[newStatus]}" không?'),
+        title: Text('Xác nhận cập nhật trạng thái', style: TextStyle(color: Colors.blue[700])),
+        content: Text('Bạn có muốn cập nhật trạng thái thành "${_statusDisplay[newStatus]}" không?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey)),
+            child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -168,10 +254,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ),
     );
 
-    if (confirm == true) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (confirm == true && mounted) {
+      setState(() => _isLoading = true);
       try {
         DateTime? newCompletedAt = newStatus == 'Done' ? DateTime.now() : null;
 
@@ -183,18 +267,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
         );
         widget.onUpdate();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Đã cập nhật trạng thái thành "${_statusDisplay[newStatus]}"')),
-        );
-        Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Đã cập nhật trạng thái thành "${_statusDisplay[newStatus]}"')),
+          );
+          Navigator.pop(context);
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi cập nhật trạng thái: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi khi cập nhật trạng thái: $e')),
+          );
+        }
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -227,6 +315,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       dueDateDisplay = 'Chưa thiết lập';
     }
 
+    final canEditOrDelete = _currentUserId != null &&
+        ((widget.task.createdBy == _currentUserId || _isAdminOfGroup) ||
+            (widget.task.groupId == null && widget.task.assignedTo == _currentUserId)) &&
+        (widget.task.status != 'Cancelled' || widget.task.createdBy == _currentUserId);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -235,73 +328,113 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             child: Column(
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         'Chi tiết công việc',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 17,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue[700],
                         ),
                       ),
                       Row(
                         children: [
-                          PopupMenuButton<String>(
-                            icon: Icon(
-                              Icons.swap_horiz,
-                              color: widget.task.status == 'Cancelled' ? Colors.grey : Colors.blue[700],
+                          if (canEditOrDelete)
+                            IconButton(
+                              icon: Icon(
+                                Icons.check_circle,
+                                color: widget.task.status == 'Cancelled' && widget.task.createdBy != _currentUserId
+                                    ? Colors.grey
+                                    : Colors.green,
+                                size: 18,
+                              ),
+                              onPressed: widget.task.status == 'Cancelled' && widget.task.createdBy != _currentUserId
+                                  ? null
+                                  : _handleToggleComplete,
+                              tooltip: widget.task.status == 'Done' ? 'Hủy hoàn thành' : 'Hoàn thành',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                             ),
-                            enabled: widget.task.status != 'Cancelled',
-                            onSelected: (String newStatus) {
-                              _updateTaskStatus(newStatus);
-                            },
-                            itemBuilder: (BuildContext context) => [
-                              PopupMenuItem<String>(
-                                value: 'To do',
-                                child: Text('Cần làm'),
+                          if (canEditOrDelete)
+                            PopupMenuButton<String>(
+                              icon: Icon(
+                                Icons.swap_horiz,
+                                color: widget.task.status == 'Cancelled' && widget.task.createdBy != _currentUserId
+                                    ? Colors.grey
+                                    : Colors.blue[700],
+                                size: 18,
                               ),
-                              PopupMenuItem<String>(
-                                value: 'In progress',
-                                child: Text('Đang làm'),
-                              ),
-                              PopupMenuItem<String>(
-                                value: 'Done',
-                                child: Text('Đã hoàn thành'),
-                              ),
-                              PopupMenuItem<String>(
-                                value: 'Cancelled',
-                                child: Text('Đã hủy'),
-                              ),
-                            ],
-                            tooltip: 'Cập nhật trạng thái',
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.edit,
-                              color: widget.task.status == 'Cancelled' ? Colors.grey : Colors.blue[700],
-                            ),
-                            onPressed: widget.task.status == 'Cancelled'
-                                ? null
-                                : () async {
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      TaskFormScreen(task: widget.task, onSave: widget.onUpdate),
+                              enabled: widget.task.status != 'Cancelled' || widget.task.createdBy == _currentUserId,
+                              onSelected: (String newStatus) {
+                                _updateTaskStatus(newStatus);
+                              },
+                              itemBuilder: (BuildContext context) => [
+                                const PopupMenuItem<String>(
+                                  value: 'To do',
+                                  child: Text('Cần làm'),
                                 ),
-                              );
-                              if (result == true) {
-                                widget.onUpdate();
-                                Navigator.pop(context);
-                              }
-                            },
-                          ),
+                                const PopupMenuItem<String>(
+                                  value: 'In progress',
+                                  child: Text('Đang làm'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'Done',
+                                  child: Text('Đã hoàn thành'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'Cancelled',
+                                  child: Text('Đã hủy'),
+                                ),
+                              ],
+                              tooltip: 'Đổi trạng thái',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          if (canEditOrDelete)
+                            IconButton(
+                              icon: Icon(
+                                Icons.edit,
+                                color: widget.task.status == 'Cancelled' && widget.task.createdBy != _currentUserId
+                                    ? Colors.grey
+                                    : Colors.blue[700],
+                                size: 18,
+                              ),
+                              onPressed: (widget.task.status == 'Cancelled' && widget.task.createdBy != _currentUserId) || _isLoading
+                                  ? null
+                                  : _handleEdit,
+                              tooltip: 'Chỉnh sửa',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          if (canEditOrDelete)
+                            IconButton(
+                              icon: Icon(
+                                Icons.delete,
+                                color: widget.task.status == 'Cancelled' && widget.task.createdBy != _currentUserId
+                                    ? Colors.grey
+                                    : Colors.red,
+                                size: 18,
+                              ),
+                              onPressed: (widget.task.status == 'Cancelled' && widget.task.createdBy != _currentUserId) || _isLoading
+                                  ? null
+                                  : _deleteTask,
+                              tooltip: 'Xóa',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
                           IconButton(
-                            icon: Icon(Icons.arrow_back, color: Colors.blue[700]),
+                            icon: Icon(
+                              Icons.arrow_back,
+                              color: Colors.blue[700],
+                              size: 18,
+                            ),
                             onPressed: () => Navigator.pop(context),
+                            tooltip: 'Quay lại',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
                           ),
                         ],
                       ),
@@ -310,21 +443,32 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.task.title,
+                          'Tiêu đề',
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Colors.blue[700],
                           ),
                         ),
-                        SizedBox(height: 20),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 8),
+                          child: Text(
+                            widget.task.title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
                         Divider(color: Colors.grey[300], thickness: 1),
-                        SizedBox(height: 20),
+                        const SizedBox(height: 20),
                         Text(
                           'Mô tả',
                           style: TextStyle(
@@ -333,14 +477,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             color: Colors.blue[700],
                           ),
                         ),
-                        SizedBox(height: 8),
-                        Text(
-                          widget.task.description,
-                          style: TextStyle(fontSize: 16, color: Colors.black87),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 8),
+                          child: Text(
+                            widget.task.description,
+                            style: const TextStyle(fontSize: 16, color: Colors.black87),
+                          ),
                         ),
-                        SizedBox(height: 20),
+                        const SizedBox(height: 20),
                         Divider(color: Colors.grey[300], thickness: 1),
-                        SizedBox(height: 20),
+                        const SizedBox(height: 20),
                         Text(
                           'Thông tin chi tiết',
                           style: TextStyle(
@@ -349,78 +495,84 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             color: Colors.blue[700],
                           ),
                         ),
-                        SizedBox(height: 8),
-                        _buildDetailRow('Trạng thái', _statusDisplay[widget.task.status] ?? widget.task.status),
-                        _buildDetailRow('Độ ưu tiên',
-                            widget.task.priority == 1 ? 'Thấp' : widget.task.priority == 2 ? 'Trung bình' : 'Cao'),
-                        _buildDetailRow('Hạn hoàn thành', dueDateDisplay),
-                        if (widget.task.category != null)
-                          Row(
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Danh mục: ',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue[700],
+                              _buildDetailRow('Trạng thái: ', _statusDisplay[widget.task.status] ?? widget.task.status),
+                              _buildDetailRow('Độ ưu tiên: ',
+                                  widget.task.priority == 1 ? 'Thấp' : widget.task.priority == 2 ? 'Trung bình' : 'Cao'),
+                              _buildDetailRow('Hạn hoàn thành: ', dueDateDisplay),
+                              if (widget.task.category != null)
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Danh mục: ',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue[700],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: categoryStyle!['color'],
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        widget.task.category!,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: categoryStyle['textColor'],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: categoryStyle!['color'],
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  widget.task.category!,
+                              _buildDetailRow('Giao cho: ', _assignedToUsername ?? 'Không có'),
+                              if (_groupName != null) _buildDetailRow('Nhóm: ', _groupName!),
+                              _buildDetailRow('Tạo ngày: ',
+                                  '${DateFormat.yMd().format(widget.task.createdAt)} lúc ${DateFormat.Hm().format(widget.task.createdAt)} phút'),
+                              _buildDetailRow('Cập nhật ngày: ',
+                                  '${DateFormat.yMd().format(widget.task.updatedAt)} lúc ${DateFormat.Hm().format(widget.task.updatedAt)} phút'),
+                              if (widget.task.completedAt != null)
+                                _buildDetailRow('Hoàn thành: ',
+                                    '${DateFormat.yMd().format(widget.task.completedAt!)} lúc ${DateFormat.Hm().format(widget.task.completedAt!)} phút'),
+                              if (widget.task.attachments != null && widget.task.attachments!.isNotEmpty) ...[
+                                const SizedBox(height: 20),
+                                Divider(color: Colors.grey[300], thickness: 1),
+                                const SizedBox(height: 20),
+                                Text(
+                                  'Tệp đính kèm',
                                   style: TextStyle(
                                     fontSize: 16,
-                                    color: categoryStyle['textColor'],
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue[700],
                                   ),
                                 ),
-                              ),
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 16, top: 8),
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: widget.task.attachments!
+                                        .map((file) => Chip(
+                                      label: Text(file.split('/').last),
+                                      backgroundColor: Colors.blue[50],
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ))
+                                        .toList(),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                        _buildDetailRow('Giao cho', widget.task.assignedTo ?? 'Không có'),
-                        if (_groupName != null) _buildDetailRow('Nhóm', _groupName!),
-                        _buildDetailRow(
-                            'Tạo ngày',
-                            '${DateFormat.yMd().format(widget.task.createdAt)} lúc ${DateFormat.Hm().format(widget.task.createdAt)} phút'),
-                        _buildDetailRow(
-                            'Cập nhật ngày',
-                            '${DateFormat.yMd().format(widget.task.updatedAt)} lúc ${DateFormat.Hm().format(widget.task.updatedAt)} phút'),
-                        if (widget.task.completedAt != null)
-                          _buildDetailRow(
-                              'Hoàn thành',
-                              '${DateFormat.yMd().format(widget.task.completedAt!)} lúc ${DateFormat.Hm().format(widget.task.completedAt!)} phút'),
-                        if (widget.task.attachments != null && widget.task.attachments!.isNotEmpty) ...[
-                          SizedBox(height: 20),
-                          Divider(color: Colors.grey[300], thickness: 1),
-                          SizedBox(height: 20),
-                          Text(
-                            'Tệp đính kèm',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[700],
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: widget.task.attachments!
-                                .map((file) => Chip(
-                              label: Text(file.split('/').last),
-                              backgroundColor: Colors.blue[50],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ))
-                                .toList(),
-                          ),
-                        ],
-                        SizedBox(height: 24),
+                        ),
+                        const SizedBox(height: 24),
                         Container(
                           width: double.infinity,
                           decoration: BoxDecoration(
@@ -440,16 +592,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
-                              padding: EdgeInsets.symmetric(vertical: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
                             ),
                             child: _isLoading
-                                ? CircularProgressIndicator(color: Colors.white)
+                                ? const CircularProgressIndicator(color: Colors.white)
                                 : Text(
                               widget.task.status == 'Done' ? 'Hủy hoàn thành' : 'Hoàn thành',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
@@ -467,9 +619,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           if (_isLoading)
             Container(
               color: Colors.black54,
-              child: Center(
-                child: CircularProgressIndicator(color: Colors.blue[700]),
-              ),
+              child: Center(child: CircularProgressIndicator(color: Colors.blue[700])),
             ),
         ],
       ),
@@ -478,18 +628,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$label: ',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue[700]),
+            label,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue[700],
+            ),
           ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: 16, color: Colors.black87),
+              style: const TextStyle(fontSize: 16, color: Colors.black87),
             ),
           ),
         ],

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../models/user.dart';
 import '../models/task.dart';
+
+
 import '../models/group.dart';
 import '../models/group_request.dart';
 
@@ -13,6 +15,7 @@ class FirestoreService {
     try {
       await _firestore.collection('users').doc(user.id).set(user.toMap());
     } catch (e) {
+      print('Lỗi khi tạo người dùng: $e');
       throw Exception('Lỗi khi tạo người dùng: $e');
     }
   }
@@ -23,8 +26,10 @@ class FirestoreService {
       if (doc.exists) {
         return User.fromMap(doc.data()!);
       }
+      print('Người dùng với ID $id không tồn tại');
       return null;
     } catch (e) {
+      print('Lỗi khi lấy người dùng với ID $id: $e');
       throw Exception('Lỗi khi lấy người dùng: $e');
     }
   }
@@ -35,8 +40,10 @@ class FirestoreService {
       if (doc.exists) {
         return doc.data()!['username'] as String?;
       }
+      print('Không tìm thấy username cho ID $id');
       return null;
     } catch (e) {
+      print('Lỗi khi lấy username cho ID $id: $e');
       throw Exception('Lỗi khi lấy tên người dùng: $e');
     }
   }
@@ -47,8 +54,10 @@ class FirestoreService {
       if (doc.exists) {
         return doc.data()!['role'] as String?;
       }
+      print('Không tìm thấy role cho ID $id');
       return null;
     } catch (e) {
+      print('Lỗi khi lấy role cho ID $id: $e');
       throw Exception('Lỗi khi lấy vai trò người dùng: $e');
     }
   }
@@ -57,6 +66,7 @@ class FirestoreService {
     try {
       await _firestore.collection('users').doc(user.id).update(user.toMap());
     } catch (e) {
+      print('Lỗi khi cập nhật người dùng với ID ${user.id}: $e');
       throw Exception('Lỗi khi cập nhật người dùng: $e');
     }
   }
@@ -66,6 +76,7 @@ class FirestoreService {
     try {
       await _firestore.collection('tasks').doc(task.id).set(task.toMap());
     } catch (e) {
+      print('Lỗi khi tạo công việc với ID ${task.id}: $e');
       throw Exception('Lỗi khi tạo công việc: $e');
     }
   }
@@ -74,6 +85,7 @@ class FirestoreService {
     try {
       await _firestore.collection('tasks').doc(task.id).update(task.toMap());
     } catch (e) {
+      print('Lỗi khi cập nhật công việc với ID ${task.id}: $e');
       throw Exception('Lỗi khi cập nhật công việc: $e');
     }
   }
@@ -82,6 +94,7 @@ class FirestoreService {
     try {
       await _firestore.collection('tasks').doc(id).delete();
     } catch (e) {
+      print('Lỗi khi xóa công việc với ID $id: $e');
       throw Exception('Lỗi khi xóa công việc: $e');
     }
   }
@@ -109,6 +122,7 @@ class FirestoreService {
     try {
       await _firestore.collection('groups').doc(group.id).set(group.toMap());
     } catch (e) {
+      print('Lỗi khi tạo nhóm với ID ${group.id}: $e');
       throw Exception('Lỗi khi tạo nhóm: $e');
     }
   }
@@ -119,8 +133,10 @@ class FirestoreService {
       if (doc.exists) {
         return Group.fromMap(doc.data()!);
       }
+      print('Nhóm với ID $id không tồn tại');
       return null;
     } catch (e) {
+      print('Lỗi khi lấy nhóm với ID $id: $e');
       throw Exception('Lỗi khi lấy nhóm: $e');
     }
   }
@@ -135,8 +151,10 @@ class FirestoreService {
       if (snapshot.docs.isNotEmpty) {
         return Group.fromMap(snapshot.docs.first.data());
       }
+      print('Không tìm thấy nhóm với mã $code');
       return null;
     } catch (e) {
+      print('Lỗi khi tìm nhóm với mã $code: $e');
       throw Exception('Lỗi khi tìm nhóm bằng mã: $e');
     }
   }
@@ -147,9 +165,12 @@ class FirestoreService {
           .collection('groups')
           .where('members', arrayContains: userId)
           .get();
-      return snapshot.docs.map((doc) => Group.fromMap(doc.data())).toList();
+      final groups = snapshot.docs.map((doc) => Group.fromMap(doc.data())).toList();
+      print('Tải được ${groups.length} nhóm cho user $userId');
+      return groups;
     } catch (e) {
-      throw Exception('Lỗi khi lấy danh sách nhóm của người dùng: $e');
+      print('Lỗi khi lấy danh sách nhóm cho user $userId: $e');
+      return []; // Trả về rỗng thay vì ném lỗi
     }
   }
 
@@ -157,6 +178,7 @@ class FirestoreService {
     try {
       await _firestore.collection('groups').doc(group.id).update(group.toMap());
     } catch (e) {
+      print('Lỗi khi cập nhật nhóm với ID ${group.id}: $e');
       throw Exception('Lỗi khi cập nhật nhóm: $e');
     }
   }
@@ -166,6 +188,7 @@ class FirestoreService {
     try {
       await _firestore.collection('group_requests').doc(request.id).set(request.toMap());
     } catch (e) {
+      print('Lỗi khi tạo yêu cầu tham gia nhóm với ID ${request.id}: $e');
       throw Exception('Lỗi khi tạo yêu cầu tham gia nhóm: $e');
     }
   }
@@ -184,6 +207,7 @@ class FirestoreService {
     try {
       await _firestore.collection('group_requests').doc(request.id).update(request.toMap());
     } catch (e) {
+      print('Lỗi khi cập nhật yêu cầu tham gia nhóm với ID ${request.id}: $e');
       throw Exception('Lỗi khi cập nhật yêu cầu tham gia nhóm: $e');
     }
   }
